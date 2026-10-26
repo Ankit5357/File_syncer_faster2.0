@@ -45,6 +45,7 @@ SENDER_EMAIL = os.environ.get("ankit20june@gmail.com", "").strip()
 APP_PASSWORD = os.environ.get("hkeeejndnacihxwe", "").replace(" ", "")
 RECEIVER_EMAIL = os.environ.get("ankit20@gmail.com", "").strip()
 
+
 ACCESS_HOURS = 10
 OTP_VALIDITY_MINUTES = 5
 MAX_OTP_ATTEMPTS = 5
@@ -560,7 +561,7 @@ def find_matching_folder(
 
     
 
-    cutoff_timestamp = time.time() - (10 * 24 * 60 * 60)
+    cutoff_timestamp = time.time() - (10* 24 * 60 * 60)
 
     for item in base_dir.rglob("*"):
 
@@ -1368,8 +1369,12 @@ for bl_no, group in grouped_bl:
         for inv_no in invoices:
             prefix, series, invoice_id = parse_invoice(inv_no)
 
+            # Invalid invoice: try the next invoice for this BL.
             if not (prefix and series and invoice_id):
+                print(f"[INVALID INVOICE - TRY NEXT] {inv_no}")
                 continue
+
+            print(f"[SEARCHING INVOICE] {inv_no}")
 
             matched_folder = find_matching_folder(
                 EXISTING_FOLDERS_DIR,
@@ -1380,9 +1385,14 @@ for bl_no, group in grouped_bl:
 
             if matched_folder:
                 matched_invoice = inv_no
+                print(f"[FOLDER FOUND] {matched_folder}")
                 break
 
-        # If no invoice matches, skip to the next BL
+            # Valid invoice searched but folder not found:
+            # skip this BL without trying its remaining invoices.
+            print(f"[FOLDER MISSING] {inv_no} — skipping BL {bl_no}")
+            break
+
         if not matched_folder:
             blank_date.loc[
                 group.index, "FOLDER STATUS"
