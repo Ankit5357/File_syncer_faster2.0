@@ -41,9 +41,9 @@ from email.message import EmailMessage
 # AKLD_APP_PASSWORD   = Gmail App Password
 # AKLD_OTP_EMAIL      = Email address receiving the OTP
 
-SENDER_EMAIL = os.environ.get("AKLD_EMAIL", "").strip()
-APP_PASSWORD = os.environ.get("AKLD_APP_PASSWORD", "").replace(" ", "")
-RECEIVER_EMAIL = os.environ.get("AKLD_OTP_EMAIL", "").strip()
+SENDER_EMAIL = os.environ.get("ankit20june@gmail.com", "").strip()
+APP_PASSWORD = os.environ.get("hkeeejndnacihxwe", "").replace(" ", "")
+RECEIVER_EMAIL = os.environ.get("ankit20@gmail.com", "").strip()
 
 ACCESS_HOURS = 10
 OTP_VALIDITY_MINUTES = 5
