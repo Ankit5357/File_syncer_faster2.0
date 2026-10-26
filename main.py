@@ -237,59 +237,46 @@ if not akld_require_access():
 
 
 
-def cleanup_empty_folders_after_sync(main_dir):
-    """Remove empty OTH, Ship To Party, Country and Region folders."""
 
-    main_dir = Path(main_dir).resolve()
+def cleanup_empty_folders_after_sync(main_dir):
+    """
+    Delete empty folders recursively, starting with the deepest folders.
+    Never delete files or folders containing files.
+    """
+
+    main_dir = Path(main_dir)
 
     if not main_dir.is_dir():
         print(f"[CLEANUP SKIPPED] Main folder not found: {main_dir}")
         return
 
     print("\n" + "=" * 70)
-    print("SECOND CLEANUP: EMPTY FOLDERS AFTER SYNC")
+    print("CLEANUP: REMOVE EMPTY FOLDERS ONLY")
+    print(f"Main directory: {main_dir}")
     print("=" * 70)
 
-    # 1. Remove empty OTH folders, deepest first.
-    oth_folders = sorted(
-        [
-            p for p in main_dir.rglob("*")
-            if p.is_dir()
-            and re.match(r"^OTH(?:\s|$)", p.name, re.IGNORECASE)
-        ],
-        key=lambda p: len(p.parts),
+    # Collect all subfolders, deepest first.
+    folders = sorted(
+        (folder for folder in main_dir.rglob("*") if folder.is_dir()),
+        key=lambda folder: len(folder.parts),
         reverse=True
     )
 
-    for folder in oth_folders:
-        if folder.exists() and not folder_has_files(folder):
-            remove_folder(folder)
+    deleted_count = 0
 
-    # 2. Remove empty Ship To Party folders.
-    # 3. Remove empty Country folders.
-    # 4. Remove empty Region folders.
-    for region in list(main_dir.iterdir()):
-        if not region.is_dir():
-            continue
+    for folder in folders:
+        try:
+            # Delete only if the folder is completely empty.
+            if not any(folder.iterdir()):
+                folder.rmdir()
+                deleted_count += 1
+                print(f"[DELETED EMPTY FOLDER] {folder}")
 
-        for country in list(region.iterdir()):
-            if not country.is_dir():
-                continue
+        except (PermissionError, OSError) as error:
+            print(f"[COULD NOT DELETE] {folder}: {error}")
 
-            for ship_to_party in list(country.iterdir()):
-                if not ship_to_party.is_dir():
-                    continue
-
-                if not folder_has_files(ship_to_party):
-                    remove_folder(ship_to_party)
-
-            if country.exists() and not folder_has_files(country):
-                remove_folder(country)
-
-        if region.exists() and not folder_has_files(region):
-            remove_folder(region)
-
-    print("SECOND CLEANUP FINISHED")
+    print(f"Empty folders deleted: {deleted_count}")
+    print("CLEANUP FINISHED")
     print("=" * 70)
 
 
@@ -907,7 +894,7 @@ if missing_columns:
 # SAFETY SWITCH:
 # True  = preview only; no folders are deleted.
 # False = permanently delete confirmed completed folders.
-DRY_RUN_CLEANUP = False
+DRY_RUN_CLEANUP = True
 
 
 def normalize_invoice(invoice):
@@ -945,7 +932,7 @@ def normalize_invoice(invoice):
 
 # True  = preview only; no folders are deleted.
 # False = permanently delete qualifying folders.
-DRY_RUN_CLEANUP = False
+DRY_RUN_CLEANUP = True
 
 
 def normalize_invoice(invoice):
@@ -1145,105 +1132,35 @@ def cleanup_completed_folders(main_dir, df):
 
         series, remainder = match.groups()
 
+                # Use ONLY the first invoice number in the folder name.
         numbers = re.findall(r"\d+", remainder)
 
         if not numbers:
             print(f"[KEEP - NO INVOICE NUMBER] {folder_path}")
             continue
 
-        invoice_keys = [
-            normalize_invoice(
-                f"OTH/{series}/EXP/26/{number}"
-            )
-            for number in numbers
-        ]
+        first_number = numbers[0]
 
-        statuses = [
-            invoice_status.get(key)
-            for key in invoice_keys
-        ]
+        invoice_key = normalize_invoice(
+            f"OTH/{series}/EXP/26/{first_number}"
+        )
 
-        # At least one invoice must be confirmed complete.
-        if not any(status is True for status in statuses):
-            print(f"[KEEP - NO COMPLETED INVOICE] {folder_path}")
-            print(f"  Invoices: {invoice_keys}")
+        status = invoice_status.get(invoice_key)
+
+        if status is None:
+            print(f"[KEEP - INVOICE NOT FOUND IN EXCEL] {folder_path}")
+            print(f"  Invoice: {invoice_key}")
             continue
 
-        remove_folder(folder_path)
+        if status is True:
+            print(f"[DELETE - SCAN DATE POPULATED] {folder_path}")
+            remove_folder(folder_path)
+        else:
+            print(f"[KEEP - PENDING SYNC] {folder_path}")
+            print(f"  Invoice: {invoice_key}")
+
 
         # -----------------------------------------------------
-    # 3. REMOVE EMPTY OTH FOLDERS AND EMPTY PARENT FOLDERS
-    # -----------------------------------------------------
-
-    # STEP 1: Remove any remaining OTH folder with no files.
-    # This runs AFTER completed-invoice deletion above.
-
-    remaining_oth_folders = sorted(
-        [
-            path for path in main_dir.rglob("*")
-            if path.is_dir()
-            and re.match(
-                r"^OTH(?:\s|$)",
-                path.name,
-                re.IGNORECASE
-            )
-        ],
-        key=lambda path: len(path.parts),
-        reverse=True
-    )
-
-    for oth_folder in remaining_oth_folders:
-
-        if not oth_folder.exists():
-            continue
-
-        if folder_has_files(oth_folder):
-            print(f"[KEEP OTH - CONTAINS FILES] {oth_folder}")
-        else:
-            print(f"[DELETE EMPTY OTH] {oth_folder}")
-            remove_folder(oth_folder)
-
-    # STEP 2: Ship To Party -> Country -> Region.
-    # Delete each parent only if it contains no files anywhere.
-
-    for region in list(main_dir.iterdir()):
-
-        if not region.is_dir():
-            continue
-
-        for country in list(region.iterdir()):
-
-            if not country.is_dir():
-                continue
-
-            for ship_to_party in list(country.iterdir()):
-
-                if not ship_to_party.is_dir():
-                    continue
-
-                if folder_has_files(ship_to_party):
-                    print(f"[KEEP SHIP TO PARTY] {ship_to_party}")
-                else:
-                    print(f"[DELETE EMPTY SHIP TO PARTY] {ship_to_party}")
-                    remove_folder(ship_to_party)
-
-            # Recheck Country after Ship To Party cleanup.
-            if country.exists():
-
-                if folder_has_files(country):
-                    print(f"[KEEP COUNTRY] {country}")
-                else:
-                    print(f"[DELETE EMPTY COUNTRY] {country}")
-                    remove_folder(country)
-
-        # Recheck Region after Country cleanup.
-        if region.exists():
-
-            if folder_has_files(region):
-                print(f"[KEEP REGION] {region}")
-            else:
-                print(f"[DELETE EMPTY REGION] {region}")
-                remove_folder(region)
 
     print("=" * 70)
     print("CLEANUP FINISHED")
@@ -1259,9 +1176,12 @@ cleanup_completed_folders(MAIN_DIR, df)
 # 9. FILTER BLANK SCAN DATE
 # =========================================================
 
-blank_date = df[
+scan_date_blank = (
     df["Scan Date"].isna()
-].copy()
+    | df["Scan Date"].astype(str).str.strip().eq("")
+)
+
+blank_date = df[scan_date_blank].copy()
 
 print(
     f"Rows with blank Scan Date: "
@@ -1437,58 +1357,44 @@ for bl_no, group in grouped_bl:
         matched_invoice = None
 
 
+
         # =================================================
         # TRY INVOICES ONE BY ONE
         # =================================================
 
-        
-        # =================================================
-        # CHECK ONLY THE FIRST INVOICE FOR THIS BL
-        # =================================================
+        matched_folder = None
+        matched_invoice = None
 
-        if len(invoices) > 0:
-
-            inv_no = invoices[0]
-
+        for inv_no in invoices:
             prefix, series, invoice_id = parse_invoice(inv_no)
 
-            if prefix and series and invoice_id:
+            if not (prefix and series and invoice_id):
+                continue
 
-                search_name = f"{prefix} {series} {invoice_id}"
+            matched_folder = find_matching_folder(
+                EXISTING_FOLDERS_DIR,
+                prefix,
+                series,
+                invoice_id
+            )
 
-                print("\n[SEARCHING FIRST INVOICE ONLY]")
-                print(f"Invoice : {inv_no}")
-                print(f"Search  : {search_name}")
+            if matched_folder:
+                matched_invoice = inv_no
+                break
 
-                matched_folder = find_matching_folder(
-                    EXISTING_FOLDERS_DIR,
-                    prefix,
-                    series,
-                    invoice_id
-                )
+        # If no invoice matches, skip to the next BL
+        if not matched_folder:
+            blank_date.loc[
+                group.index, "FOLDER STATUS"
+            ] = "Folder Missing"
 
-                if matched_folder:
-                    matched_invoice = inv_no
-                    print("\n[FOUND]")
-                    print(f"Invoice : {matched_invoice}")
-                    print(f"Folder  : {matched_folder.name}")
-                else:
-                    print(f"[NOT FOUND] {inv_no}")
-
-            else:
-                print(f"[INVALID INVOICE] {inv_no}")
-
-        # Skip this BL if the first invoice has no match.
-        if matched_folder is None:
-            print(f"[SKIPPING BL] {bl_no} — no matching folder found")
-
-            blank_date.loc[group.index, "FOLDER STATUS"] = "Folder Missing"
-            blank_date.loc[group.index, "PROCESS STATUS"] = "Folder Missing"
+            blank_date.loc[
+                group.index, "PROCESS STATUS"
+            ] = "Folder Missing"
 
             continue
 
-
-
+        
         # =================================================
         # DESTINATION REGION / COUNTRY
         # =================================================
@@ -1500,94 +1406,52 @@ for bl_no, group in grouped_bl:
             / ship_to_party
         )
 
-
         target_dest_dir.mkdir(
             parents=True,
             exist_ok=True
         )
 
+        # =================================================
+        # COPY / SYNC MATCHED FOLDER
+        # =================================================
+
+        dest_folder_path = (
+            target_dest_dir
+            / matched_folder.name
+        )
+
+        print("\n[SYNCING MATCHED FOLDER]")
+        print(f"FROM: {matched_folder}")
+        print(f"TO: {dest_folder_path}")
+
+        copy_folder_with_bl_renaming(
+            matched_folder,
+            dest_folder_path,
+            bl_no
+        )
+
+        print("\n[SYNC COMPLETE]")
 
         # =================================================
-        # MATCH FOUND
+        # UPDATE RESULT
         # =================================================
 
-        if matched_folder:
+        blank_date.loc[
+            group.index, "FOLDER STATUS"
+        ] = "Copied"
 
-            dest_folder_path = (
-                target_dest_dir
-                / matched_folder.name
-            )
+        blank_date.loc[
+            group.index, "FOLDER MATCHED INVOICE"
+        ] = matched_invoice
 
+        blank_date.loc[
+            group.index, "FOLDER MATCHED NAME"
+        ] = matched_folder.name
 
-            # =================================================
-            # COPY / SYNC WHOLE MATCHED FOLDER
-            # =================================================
+        blank_date.loc[
+            group.index, "PROCESS STATUS"
+        ] = "Completed"
 
-            print("\n")
-            print(
-                "[SYNCING MATCHED FOLDER]"
-            )
-
-            print(
-                f"FROM:"
-            )
-
-            print(
-                matched_folder
-            )
-
-            print(
-                f"TO:"
-            )
-
-            print(
-                dest_folder_path
-            )
-
-
-            copy_folder_with_bl_renaming(
-                matched_folder,
-                dest_folder_path,
-                bl_no
-            )
-
-
-            print(
-                "\n[SYNC COMPLETE]"
-            )
-
-
-            # =================================================
-            # UPDATE RESULT
-            # =================================================
-
-            blank_date.loc[
-                group.index,
-                "FOLDER STATUS"
-            ] = "Copied"
-
-
-            blank_date.loc[
-                group.index,
-                "FOLDER MATCHED INVOICE"
-            ] = matched_invoice
-
-
-            blank_date.loc[
-                group.index,
-                "FOLDER MATCHED NAME"
-            ] = matched_folder.name
-
-
-            blank_date.loc[
-                group.index,
-                "PROCESS STATUS"
-            ] = "Completed"
-
-
-        # =================================================
-        # NO MATCH
-        # =================================================
 
     # =====================================================
     # ERROR HANDLING
