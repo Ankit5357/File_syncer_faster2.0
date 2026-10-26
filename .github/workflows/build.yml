@@ -1,0 +1,46 @@
+
+    
+  
+name: Build Windows EXE
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Build EXE
+        run: python -m PyInstaller --clean --noconfirm --onefile --console --name File_syncer main.py
+
+      - name: Verify EXE was created
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist/File_syncer.exe")) {
+            Write-Error "Build failed: dist/File_syncer.exe was not created."
+            Get-ChildItem -Recurse
+            exit 1
+          }
+          Get-Item "dist/File_syncer.exe" | Format-List FullName, Length
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: File_syncer-windows
+          path: dist/File_syncer.exe
+          if-no-files-found: error
+
