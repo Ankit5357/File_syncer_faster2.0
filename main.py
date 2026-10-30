@@ -43,7 +43,7 @@ from email.message import EmailMessage
 
 SENDER_EMAIL = os.environ.get("ankit20june@gmail.com", "").strip()
 APP_PASSWORD = os.environ.get("hkeeejndnacihxwe", "").replace(" ", "")
-RECEIVER_EMAIL = os.environ.get("ankit20@gmail.com", "").strip()
+RECEIVER_EMAIL = os.environ.get("ankitkumar5357@gmail.com", "").strip()
 
 
 ACCESS_HOURS = 10
@@ -561,7 +561,7 @@ def find_matching_folder(
 
     
 
-    cutoff_timestamp = time.time() - (10* 24 * 60 * 60)
+    cutoff_timestamp = time.time() - (30* 24 * 60 * 60)
 
     for item in base_dir.rglob("*"):
 
