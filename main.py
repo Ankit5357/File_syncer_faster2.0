@@ -561,7 +561,7 @@ def find_matching_folder(
 
     
 
-    cutoff_timestamp = time.time() - (30* 24 * 60 * 60)
+    cutoff_timestamp = time.time() - (10* 24 * 60 * 60)
 
     for item in base_dir.rglob("*"):
 
